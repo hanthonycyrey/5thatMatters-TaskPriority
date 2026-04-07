@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
-import { supabase, Task } from './lib/supabase';
+import { supabase, Task, EstimatedDuration } from './lib/supabase';
 import { TaskClassificationModal } from './components/TaskClassificationModal';
-import { Check, Plus } from 'lucide-react';
+import { TaskDump } from './components/TaskDump';
+import { ProgressTracker } from './components/ProgressTracker';
+import { Check, Plus, ChevronDown } from 'lucide-react';
 
 function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -10,6 +12,7 @@ function App() {
   const [showWaitingRoom, setShowWaitingRoom] = useState(false);
   const [showGraveyard, setShowGraveyard] = useState(false);
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
+  const [collapsedTasks, setCollapsedTasks] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadTasks();
@@ -56,12 +59,15 @@ function App() {
     text: string;
     is_important: boolean;
     is_urgent: boolean;
+    estimated_duration: EstimatedDuration;
   }) => {
     if (!taskData.is_important) {
       const { error } = await supabase.from('tasks').insert({
         text: taskData.text,
         is_important: false,
         is_urgent: false,
+        estimated_duration: taskData.estimated_duration,
+        progress: 0,
         status: 'deferred',
         completed_at: new Date().toISOString(),
       });
@@ -83,6 +89,8 @@ function App() {
       text: taskData.text,
       is_important: taskData.is_important,
       is_urgent: taskData.is_urgent,
+      estimated_duration: taskData.estimated_duration,
+      progress: 0,
       status,
       priority_order,
     });
@@ -181,6 +189,29 @@ function App() {
         await loadTasks();
       }
     }
+  };
+
+  const handleProgressChange = async (taskId: string, progress: number) => {
+    const { error } = await supabase
+      .from('tasks')
+      .update({ progress })
+      .eq('id', taskId);
+
+    if (error) {
+      console.error('Error updating progress:', error);
+    } else {
+      await loadTasks();
+    }
+  };
+
+  const toggleTaskCollapse = (taskId: string) => {
+    const newCollapsed = new Set(collapsedTasks);
+    if (newCollapsed.has(taskId)) {
+      newCollapsed.delete(taskId);
+    } else {
+      newCollapsed.add(taskId);
+    }
+    setCollapsedTasks(newCollapsed);
   };
 
   if (focusMode && theFrog) {
@@ -289,53 +320,74 @@ function App() {
           <section className="mb-10 sm:mb-16">
             <h2 className="heading-serif text-2xl sm:text-3xl mb-4 sm:mb-6">The 4</h2>
             <div className="space-y-3 sm:space-y-4">
-              {theFour.map((task, index) => (
-                <div
-                  key={task.id}
-                  className={`border-l-2 border-[#1A1A1A] pl-4 sm:pl-6 py-3 sm:py-4 ${
-                    completingTaskId === task.id ? 'task-completing' : ''
-                  }`}
-                >
-                  <div className="flex items-start justify-between mb-2 gap-2">
-                    <p className="text-mono text-sm sm:text-base leading-relaxed flex-1">
-                      <span className="hidden sm:inline">{index + 2}. </span>
-                      <span className="sm:hidden">{index + 2}.</span> {task.text}
-                    </p>
-                  </div>
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                    <div className="flex flex-wrap gap-2">
-                      {task.is_urgent && (
-                        <span className="text-mono text-xs border border-[#1A1A1A] px-2 py-1">
-                          URGENT
-                        </span>
-                      )}
-                      {task.is_high_impact && (
-                        <span className="text-mono text-xs bg-[#2D5016] text-[#F5F0E8] px-2 py-1">
-                          80/20
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+              {theFour.map((task, index) => {
+                const isCollapsed = collapsedTasks.has(task.id);
+                return (
+                  <div
+                    key={task.id}
+                    className={`border-l-2 border-[#1A1A1A] pl-4 sm:pl-6 py-3 sm:py-4 ${
+                      completingTaskId === task.id ? 'task-completing' : ''
+                    }`}
+                  >
+                    <div className="flex items-start justify-between mb-2 gap-2">
                       <button
-                        onClick={() =>
-                          handleToggleHighImpact(task.id, task.is_high_impact)
-                        }
-                        className="text-mono text-xs opacity-50 hover:opacity-100 active:opacity-75 transition-opacity min-h-[36px] sm:min-h-[auto] flex-1 sm:flex-none flex items-center justify-center px-2"
-                        title="Mark as high-impact (80/20)"
+                        onClick={() => toggleTaskCollapse(task.id)}
+                        className="mt-0.5 hover:opacity-70 transition-opacity flex-shrink-0"
+                        title={isCollapsed ? 'Expand' : 'Collapse'}
                       >
-                        {task.is_high_impact ? '−80/20' : '+80/20'}
+                        <ChevronDown
+                          size={16}
+                          className={`transition-transform ${isCollapsed ? '-rotate-90' : ''}`}
+                        />
                       </button>
-                      <button
-                        onClick={() => handleCompleteTask(task.id)}
-                        className="text-mono text-xs opacity-50 hover:opacity-100 active:opacity-75 transition-opacity flex items-center justify-center gap-1 min-h-[36px] sm:min-h-[auto] flex-1 sm:flex-none px-2"
-                      >
-                        <Check size={12} />
-                        <span className="text-xs">Done</span>
-                      </button>
+                      <p className="text-mono text-sm sm:text-base leading-relaxed flex-1">
+                        <span className="hidden sm:inline">{index + 2}. </span>
+                        <span className="sm:hidden">{index + 2}.</span> {task.text}
+                      </p>
                     </div>
+                    {!isCollapsed && (
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ml-6">
+                        <div className="flex flex-wrap gap-2">
+                          {task.is_urgent && (
+                            <span className="text-mono text-xs border border-[#1A1A1A] px-2 py-1">
+                              URGENT
+                            </span>
+                          )}
+                          {task.is_high_impact && (
+                            <span className="text-mono text-xs bg-[#2D5016] text-[#F5F0E8] px-2 py-1">
+                              80/20
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full sm:w-auto">
+                          <ProgressTracker
+                            progress={task.progress}
+                            onProgressChange={(progress) => handleProgressChange(task.id, progress)}
+                          />
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              onClick={() =>
+                                handleToggleHighImpact(task.id, task.is_high_impact)
+                              }
+                              className="text-mono text-xs opacity-50 hover:opacity-100 active:opacity-75 transition-opacity min-h-[36px] sm:min-h-[auto] flex-1 sm:flex-none flex items-center justify-center px-2"
+                              title="Mark as high-impact (80/20)"
+                            >
+                              {task.is_high_impact ? '−80/20' : '+80/20'}
+                            </button>
+                            <button
+                              onClick={() => handleCompleteTask(task.id)}
+                              className="text-mono text-xs opacity-50 hover:opacity-100 active:opacity-75 transition-opacity flex items-center justify-center gap-1 min-h-[36px] sm:min-h-[auto] flex-1 sm:flex-none px-2"
+                            >
+                              <Check size={12} />
+                              <span className="text-xs">Done</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         )}
@@ -368,6 +420,12 @@ function App() {
             Add Task
           </button>
         </section>
+
+        <TaskDump
+          tasks={waitingTasks}
+          onProgressChange={handleProgressChange}
+          onPromote={handlePromoteTask}
+        />
 
         {waitingTasks.length > 0 && (
           <section className="mb-10 sm:mb-16">

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { EstimatedDuration } from '../lib/supabase';
 
 interface TaskClassificationModalProps {
   isOpen: boolean;
@@ -7,6 +8,7 @@ interface TaskClassificationModalProps {
     text: string;
     is_important: boolean;
     is_urgent: boolean;
+    estimated_duration: EstimatedDuration;
   }) => void;
 }
 
@@ -15,9 +17,10 @@ export function TaskClassificationModal({
   onClose,
   onSubmit,
 }: TaskClassificationModalProps) {
-  const [step, setStep] = useState<'text' | 'important' | 'urgent'>('text');
+  const [step, setStep] = useState<'text' | 'important' | 'urgent' | 'duration'>('text');
   const [taskText, setTaskText] = useState('');
   const [isImportant, setIsImportant] = useState(false);
+  const [estimatedDuration, setEstimatedDuration] = useState<EstimatedDuration>('1hour');
 
   if (!isOpen) return null;
 
@@ -35,6 +38,7 @@ export function TaskClassificationModal({
         text: taskText,
         is_important: false,
         is_urgent: false,
+        estimated_duration: estimatedDuration,
       });
       resetAndClose();
     } else {
@@ -43,10 +47,15 @@ export function TaskClassificationModal({
   };
 
   const handleUrgentAnswer = (urgent: boolean) => {
+    setStep('duration');
+  };
+
+  const handleDurationAnswer = (duration: EstimatedDuration) => {
     onSubmit({
       text: taskText,
       is_important: isImportant,
-      is_urgent: urgent,
+      is_urgent: isImportant,
+      estimated_duration: duration,
     });
     resetAndClose();
   };
@@ -55,6 +64,7 @@ export function TaskClassificationModal({
     setStep('text');
     setTaskText('');
     setIsImportant(false);
+    setEstimatedDuration('1hour');
     onClose();
   };
 
@@ -135,6 +145,34 @@ export function TaskClassificationModal({
               >
                 No
               </button>
+            </div>
+          </div>
+        )}
+
+        {step === 'duration' && (
+          <div>
+            <h2 className="heading-serif text-2xl sm:text-3xl mb-3 sm:mb-4">How long will this take?</h2>
+            <p className="text-mono text-xs sm:text-sm mb-4 sm:mb-6 opacity-70">
+              Estimate the duration to help organize your work.
+            </p>
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+              {(['15min', '1hour', '1day', '1week', '1month'] as EstimatedDuration[]).map((duration) => (
+                <button
+                  key={duration}
+                  onClick={() => handleDurationAnswer(duration)}
+                  className={`py-3 sm:py-4 text-mono text-sm sm:text-base transition-colors min-h-[44px] sm:min-h-[auto] ${
+                    estimatedDuration === duration
+                      ? 'bg-[#2D5016] text-[#F5F0E8]'
+                      : 'border-2 border-[#1A1A1A] hover:bg-[#1A1A1A] hover:text-[#F5F0E8] active:bg-[#1A1A1A] active:text-[#F5F0E8]'
+                  }`}
+                >
+                  {duration === '15min' && '15 min'}
+                  {duration === '1hour' && '1 hour'}
+                  {duration === '1day' && '1 day'}
+                  {duration === '1week' && '1 week'}
+                  {duration === '1month' && '1 month'}
+                </button>
+              ))}
             </div>
           </div>
         )}
